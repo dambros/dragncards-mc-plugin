@@ -181,7 +181,7 @@
         ],
         [
           ["LOG", "LOADING Peni Parker"],
-          ["LOAD_CARDS", "SP//dr (Peni Parker)"]
+          ["LOAD_CARDS", "SP\/\/dr (Peni Parker)"]
         ]
       ],
       ["COND", ["AND", "$LOADED_PLAYER_DECK", ["EQUAL", "$GAME.roundNumber", 0]],
@@ -201,7 +201,10 @@
                 ["NOT", ["DEFINED", "$BUNDLE"]],
                 ["DEFINE", "$BUNDLE", "{{$IDENTITY_CARD.sides.$HERO_SIDE.name}} (Hero) [marvelcdb bundle]"]
               ],
-              ["LOAD_CARDS", "$BUNDLE"]
+              ["COND",
+                ["NOT_EQUAL", "$GAME_DEF.preBuiltDecks.$BUNDLE", null],
+                ["LOAD_CARDS", "$BUNDLE"]
+              ]
             ]
           ],
           ["COND",
@@ -284,14 +287,89 @@
     ],
     "gameRules": {
       "handSize": {
-        "_comment": "When a card enters play or flips, if it has a hand size, set the player's hand size to that value.",
+        "_comment": "When a card enters play or flips, if it has a hand size, set the player's hand size to that value plus the applicable modifier.",
         "type": "trigger",
         "listenTo": ["/cardById/*/inPlay", "/cardById/*/currentSide"],
         "condition": ["AND", "$TARGET.inPlay", ["NOT_EQUAL", "$TARGET.currentFace.handSize", null]],
         "then": [
           ["VAR", "$CONTROLLER", "$TARGET.controller"],
-          ["SET", "/playerData/$CONTROLLER/handSize", "$TARGET.currentFace.handSize"],
-          ["LOG", "$ALIAS_N", " set their hand size to ", "$TARGET.currentFace.handSize", "."]
+          ["VAR", "$MODIFIER", 0],
+          ["COND",
+            ["EQUAL", "$TARGET.currentFace.type", "Hero"],
+            ["UPDATE_VAR", "$MODIFIER", "$GAME.playerData.$CONTROLLER.heroHandSizeModifier"],
+            ["EQUAL", "$TARGET.currentFace.type", "Alter-Ego"],
+            ["UPDATE_VAR", "$MODIFIER", "$GAME.playerData.$CONTROLLER.alterEgoHandSizeModifier"]
+          ],
+          ["SET", "/playerData/$CONTROLLER/handSize", ["ADD", "$TARGET.currentFace.handSize", "$MODIFIER"]],
+          ["LOG", "$ALIAS_N", " set their hand size to ", ["ADD", "$TARGET.currentFace.handSize", "$MODIFIER"], "."]
+        ]
+      },
+      "heroHandSizeModifierChanged": {
+        "_comment": "When heroHandSizeModifier changes, recalculate hand size if the hero side is currently up.",
+        "type": "trigger",
+        "listenTo": ["/playerData/*/heroHandSizeModifier"],
+        "condition": ["GREATER_THAN",
+          ["LENGTH",
+            ["FILTER_CARDS", "$IDENTITY_CARD",
+              ["AND",
+                "$IDENTITY_CARD.inPlay",
+                ["EQUAL", "$IDENTITY_CARD.controller", "$TARGET_ID"],
+                ["NOT_EQUAL", "$IDENTITY_CARD.currentFace.handSize", null],
+                ["EQUAL", "$IDENTITY_CARD.currentFace.type", "Hero"]
+              ]
+            ]
+          ],
+          0
+        ],
+        "then": [
+          ["FOR_EACH_KEY_VAL", "$CARD_ID", "$CARD", "$GAME.cardById",
+            ["COND",
+              ["AND",
+                "$CARD.inPlay",
+                ["EQUAL", "$CARD.controller", "$TARGET_ID"],
+                ["NOT_EQUAL", "$CARD.currentFace.handSize", null],
+                ["EQUAL", "$CARD.currentFace.type", "Hero"]
+              ],
+              [
+                ["SET", "/playerData/$TARGET_ID/handSize", ["ADD", "$CARD.currentFace.handSize", "$TARGET.heroHandSizeModifier"]],
+                ["LOG", "$ALIAS_N", " updated their hand size to ", ["ADD", "$CARD.currentFace.handSize", "$TARGET.heroHandSizeModifier"], "."]
+              ]
+            ]
+          ]
+        ]
+      },
+      "alterEgoHandSizeModifierChanged": {
+        "_comment": "When alterEgoHandSizeModifier changes, recalculate hand size if the alter ego side is currently up.",
+        "type": "trigger",
+        "listenTo": ["/playerData/*/alterEgoHandSizeModifier"],
+        "condition": ["GREATER_THAN",
+          ["LENGTH",
+            ["FILTER_CARDS", "$IDENTITY_CARD",
+              ["AND",
+                "$IDENTITY_CARD.inPlay",
+                ["EQUAL", "$IDENTITY_CARD.controller", "$TARGET_ID"],
+                ["NOT_EQUAL", "$IDENTITY_CARD.currentFace.handSize", null],
+                ["EQUAL", "$IDENTITY_CARD.currentFace.type", "Alter-Ego"]
+              ]
+            ]
+          ],
+          0
+        ],
+        "then": [
+          ["FOR_EACH_KEY_VAL", "$CARD_ID", "$CARD", "$GAME.cardById",
+            ["COND",
+              ["AND",
+                "$CARD.inPlay",
+                ["EQUAL", "$CARD.controller", "$TARGET_ID"],
+                ["NOT_EQUAL", "$CARD.currentFace.handSize", null],
+                ["EQUAL", "$CARD.currentFace.type", "Alter-Ego"]
+              ],
+              [
+                ["SET", "/playerData/$TARGET_ID/handSize", ["ADD", "$CARD.currentFace.handSize", "$TARGET.alterEgoHandSizeModifier"]],
+                ["LOG", "$ALIAS_N", " updated their hand size to ", ["ADD", "$CARD.currentFace.handSize", "$TARGET.alterEgoHandSizeModifier"], "."]
+              ]
+            ]
+          ]
         ]
       },
       "setSideSchemeStartingThreat": {
